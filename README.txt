@@ -1,0 +1,22 @@
+CONDOR PREFLIGHT
+
+Install
+  1. Copy this folder to the sim PC, e.g. C:\CondorPreFlight
+  2. Run CondorPreFlight.exe (or double-click build.bat to rebuild it from the .cs files)
+  3. First run asks where Condor.exe, the instruments program and its .ini are
+  4. Press "Calibrate screens" once
+  5. Press "Open at Windows start" so it reads ON
+
+Calibration
+  Every screen shows its number and a picture of the screen layout.
+  Touch where the asked-for screen is in the picture. The last screen is worked out.
+  Check the names shown on each screen, then press YES - save.
+  Keyboard: A, B, C = top row left to right, P = panel, Y / N to confirm, Esc to cancel.
+
+What it changes
+  Condor:       [Graphics] MonitorCount, MonitorNID (and MonitorNFiOffset) in every
+                pilot's Setup.ini
+  Instruments:  [Window] Monitor
+  Every change is backed up in the Backups folder. "Undo last screen change" puts it back.
+
+Settings live in CondorPreFlight.ini next to the program (created on first run).
