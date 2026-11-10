@@ -16,6 +16,7 @@ namespace CondorPreFlight
         private static extern bool EnableWindow(IntPtr hWnd, bool enable);
 
         private List<DisplayInfo> displays;
+        private ScreenLayout layout;
         private int n;                       // surround screens
         private DisplayInfo[] boxOwner;      // index 0..n-1 surround left->right, n = panel
         private int step;                    // index into displays of the screen being located
@@ -23,14 +24,16 @@ namespace CondorPreFlight
         private bool accepted;
         private List<WizardForm> forms = new List<WizardForm>();
 
-        public CalibrationWizard(List<DisplayInfo> displays, int surroundCount)
+        public CalibrationWizard(List<DisplayInfo> displays, ScreenLayout layout)
         {
             this.displays = displays;
-            this.n = surroundCount;
+            this.layout = layout;
+            this.n = layout.ViewCount;
             Reset();
         }
 
         public int SurroundCount { get { return n; } }
+        public ScreenLayout Layout { get { return layout; } }
         public bool Confirming { get { return confirming; } }
         public DisplayInfo Current { get { return displays[step]; } }
         public DisplayInfo OwnerOf(int box) { return boxOwner[box]; }
@@ -45,6 +48,8 @@ namespace CondorPreFlight
         {
             if (box == n) return "INSTRUMENT PANEL";
             if (n == 1) return "MAIN SCREEN";
+            if (!layout.SingleRow) return "OUTSIDE VIEW " + (box + 1);
+            if (n == 2) return box == 0 ? "LEFT SCREEN" : "RIGHT SCREEN";
             if (n == 3) return box == 0 ? "LEFT SCREEN" : (box == 1 ? "CENTRE SCREEN" : "RIGHT SCREEN");
             return "SCREEN " + (box + 1) + " FROM THE LEFT";
         }
@@ -128,19 +133,24 @@ namespace CondorPreFlight
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         }
 
+        // The picture of the room: one box per screen, placed as set in Admin > Screen layout.
         private Rectangle[] BoxRects()
         {
+            ScreenLayout l = wiz.Layout;
             int n = wiz.SurroundCount;
             int W = ClientSize.Width, H = ClientSize.Height;
-            int areaW = (int)(W * 0.56), top = (int)(H * 0.42);
+            int areaW = (int)(W * 0.60), areaH = (int)(H * 0.40), top = (int)(H * 0.42);
             int gap = Math.Max(6, W / 160);
-            int bw = (areaW - gap * (n - 1)) / n;
-            int bh = (int)(H * 0.16);
-            int left = (W - areaW) / 2;
+            int bw = Math.Min((areaW - gap * (l.Cols - 1)) / l.Cols, areaW / 3);
+            int bh = Math.Min((areaH - gap * (l.Rows - 1)) / l.Rows, (int)(H * 0.18));
+            int left = (W - (l.Cols * bw + (l.Cols - 1) * gap)) / 2;
+            top += (areaH - (l.Rows * bh + (l.Rows - 1) * gap)) / 2;
             Rectangle[] r = new Rectangle[n + 1];
-            for (int i = 0; i < n; i++) r[i] = new Rectangle(left + i * (bw + gap), top, bw, bh);
-            int pw = Math.Min(bw, areaW / 3);
-            r[n] = new Rectangle((W - pw) / 2, top + bh + gap, pw, bh);
+            for (int i = 0; i <= n; i++)
+            {
+                int[] c = l.Cell(i);
+                r[i] = new Rectangle(left + c[0] * (bw + gap), top + c[1] * (bh + gap), bw, bh);
+            }
             return r;
         }
 
@@ -220,8 +230,9 @@ namespace CondorPreFlight
                     }
                     g.DrawRectangle(mine && wiz.Confirming ? strong : outline, boxes[i]);
                 }
-                Centered(g, n > 1 ? "outside view" : "", hint, Dim, new Rectangle(0, boxes[0].Y - (int)(H * 0.04), W, (int)(H * 0.035)));
-                Centered(g, "instrument panel", hint, Dim, new Rectangle(0, boxes[n].Bottom, W, (int)(H * 0.035)));
+                // Label the panel inside its own box, so it reads correctly in any arrangement.
+                using (Brush pb = new SolidBrush(wiz.OwnerOf(n) != null ? Ink : Dim))
+                    g.DrawString("instrument panel", hint, pb, boxes[n].X + 6, boxes[n].Y + 4);
 
                 string left = wiz.Confirming ? "YES - save" : "Start again";
                 string right = wiz.Confirming ? "NO - start again" : "Cancel";

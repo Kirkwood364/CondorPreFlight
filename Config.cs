@@ -15,6 +15,77 @@ namespace CondorPreFlight
         public bool Primary;
     }
 
+    // Where the screens physically are, on a grid of squares. Views are kept in reading
+    // order (top row left to right, then the next row); that is also the order Condor's
+    // views are numbered in. Exactly one square is the instrument panel.
+    public class ScreenLayout
+    {
+        public List<int[]> Views = new List<int[]>();   // each {column, row}
+        public int[] Panel = new int[] { 0, 1 };
+
+        public int ViewCount { get { return Views.Count; } }
+        public int[] Cell(int box) { return box < Views.Count ? Views[box] : Panel; }
+
+        public int Cols { get { int m = Panel[0]; foreach (int[] v in Views) m = Math.Max(m, v[0]); return m + 1; } }
+        public int Rows { get { int m = Panel[1]; foreach (int[] v in Views) m = Math.Max(m, v[1]); return m + 1; } }
+        public bool SingleRow { get { foreach (int[] v in Views) if (v[1] != Views[0][1]) return false; return true; } }
+
+        public static ScreenLayout Default(int n)
+        {
+            ScreenLayout l = new ScreenLayout();
+            n = n < 1 ? 1 : (n > 8 ? 8 : n);
+            for (int i = 0; i < n; i++) l.Views.Add(new int[] { i, 0 });
+            l.Panel = new int[] { (n - 1) / 2, 1 };
+            return l;
+        }
+
+        public void Normalize()
+        {
+            Views.Sort(delegate(int[] a, int[] b) { return a[1] != b[1] ? a[1].CompareTo(b[1]) : a[0].CompareTo(b[0]); });
+            int minC = Panel[0], minR = Panel[1];
+            foreach (int[] v in Views) { minC = Math.Min(minC, v[0]); minR = Math.Min(minR, v[1]); }
+            foreach (int[] v in Views) { v[0] -= minC; v[1] -= minR; }
+            Panel[0] -= minC; Panel[1] -= minR;
+        }
+
+        public static ScreenLayout Parse(string text, int fallbackCount)
+        {
+            try
+            {
+                ScreenLayout l = new ScreenLayout();
+                bool panel = false;
+                Dictionary<string, bool> seen = new Dictionary<string, bool>();
+                foreach (string part in text.Split(';'))
+                {
+                    string p = part.Trim();
+                    if (p.Length == 0) continue;
+                    string[] kv = p.Split(':');
+                    string[] xy = kv[1].Split(',');
+                    int[] cell = new int[] { int.Parse(xy[0].Trim(), CultureInfo.InvariantCulture), int.Parse(xy[1].Trim(), CultureInfo.InvariantCulture) };
+                    string key = cell[0] + "," + cell[1];
+                    if (seen.ContainsKey(key)) throw new FormatException();
+                    seen[key] = true;
+                    string kind = kv[0].Trim().ToUpperInvariant();
+                    if (kind == "V") l.Views.Add(cell);
+                    else if (kind == "P" && !panel) { l.Panel = cell; panel = true; }
+                    else throw new FormatException();
+                }
+                if (!panel || l.Views.Count < 1 || l.Views.Count > 8) throw new FormatException();
+                l.Normalize();
+                return l;
+            }
+            catch { return Default(fallbackCount); }
+        }
+
+        public override string ToString()
+        {
+            List<string> parts = new List<string>();
+            foreach (int[] v in Views) parts.Add("V:" + v[0] + "," + v[1]);
+            parts.Add("P:" + Panel[0] + "," + Panel[1]);
+            return string.Join(";", parts.ToArray());
+        }
+    }
+
     public class Settings
     {
         public IniFile Ini;
@@ -34,6 +105,10 @@ InstrumentsIni=
 [Layout]
 ; Number of projectors / screens in the outside view
 SurroundCount=3
+; Where the screens are in the room, as squares on a grid (set from Admin > Screen layout).
+; V:column,row = outside view, P:column,row = instrument panel. Blank = one row of
+; SurroundCount views with the panel underneath.
+Cells=
 ; 1 = keep the instrument panel screen as the Windows main display
 MakePanelPrimary=1
 
@@ -87,7 +162,8 @@ Pin=
         public void Set(string sec, string key, string val) { if (Ini.Set(sec, key, val)) Ini.Save(); }
         public int GetInt(string sec, string key, int fb) { int v; return int.TryParse(Get(sec, key, ""), NumberStyles.Integer, CultureInfo.InvariantCulture, out v) ? v : fb; }
 
-        public int SurroundCount { get { int n = GetInt("Layout", "SurroundCount", 3); return n < 1 ? 1 : (n > 8 ? 8 : n); } }
+        public ScreenLayout Layout { get { return ScreenLayout.Parse(Get("Layout", "Cells", ""), GetInt("Layout", "SurroundCount", 3)); } }
+        public int SurroundCount { get { return Layout.ViewCount; } }
         public string CondorExe { get { return Get("Paths", "CondorExe", ""); } }
         public string InstrumentsExe { get { return Get("Paths", "InstrumentsExe", ""); } }
         public string InstrumentsIni { get { return Get("Paths", "InstrumentsIni", ""); } }

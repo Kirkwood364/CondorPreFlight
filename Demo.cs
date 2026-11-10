@@ -9,18 +9,18 @@ namespace CondorPreFlight
     // is drawn as a tile, laid out as it is in the cockpit. Nothing is saved.
     public static class Demo
     {
-        public static void Run(int surroundCount)
+        public static void Run(ScreenLayout layout)
         {
-            int n = surroundCount < 1 ? 1 : (surroundCount > 8 ? 8 : surroundCount);
+            int n = layout.ViewCount;
             Rectangle area = Screen.PrimaryScreen.Bounds;
             int gap = Math.Max(6, area.Width / 200);
-            int across = Math.Max(n, 3);
+            int across = Math.Max(layout.Cols, 3);
             int tw = (area.Width - gap * (across + 1)) / across;
             int th = tw * 9 / 16;
-            if (2 * th + 3 * gap > area.Height) { th = (area.Height - 3 * gap) / 2; tw = th * 16 / 9; }
-            int rowW = n * tw + (n - 1) * gap;
-            int left = area.X + (area.Width - rowW) / 2;
-            int top = area.Y + (area.Height - (2 * th + gap)) / 2;
+            int maxH = (area.Height - gap * (layout.Rows + 1)) / layout.Rows;
+            if (th > maxH) { th = maxH; tw = th * 16 / 9; }
+            int left = area.X + (area.Width - (layout.Cols * tw + (layout.Cols - 1) * gap)) / 2;
+            int top = area.Y + (area.Height - (layout.Rows * th + (layout.Rows - 1) * gap)) / 2;
 
             // Deliberately scrambled numbers, as Windows might hand them out on a bad day.
             int total = n + 1;
@@ -34,8 +34,8 @@ namespace CondorPreFlight
                 d.HardwareId = "demo" + i;
                 d.DeviceName = "DEMO" + d.Number;
                 d.W = tw; d.H = th;
-                if (i < n) { d.X = left + i * (tw + gap); d.Y = top; }
-                else { d.X = area.X + (area.Width - tw) / 2; d.Y = top + th + gap; }
+                int[] cell = layout.Cell(i);
+                d.X = left + cell[0] * (tw + gap); d.Y = top + cell[1] * (th + gap);
                 displays.Add(d);
             }
             displays.Sort(delegate(DisplayInfo a, DisplayInfo b) { return a.Number.CompareTo(b.Number); });
@@ -49,7 +49,7 @@ namespace CondorPreFlight
                 backdrop.ShowInTaskbar = false;
                 backdrop.Show();
 
-                CalibrationWizard w = new CalibrationWizard(displays, n);
+                CalibrationWizard w = new CalibrationWizard(displays, layout);
                 bool ok = w.Run();
                 string msg = "Calibration cancelled.";
                 if (ok)

@@ -91,73 +91,132 @@ namespace CondorPreFlight
         }
     }
 
-    // Lets a club with a different number of outside-view screens set that up by touch.
+    // Touch editor for where the screens are in the room. Each touch on a square steps it
+    // through: empty -> outside view -> instrument panel -> empty.
     public class LayoutDialog : Form
     {
-        public int Count;
-        private Label number;
-        private Panel preview;
+        public ScreenLayout Result;
+        private const int GW = 8, GH = 4;
+        private int[,] grid = new int[GW, GH];   // 0 empty, 1 outside view, 2 instrument panel
+        private Label message;
+        private Panel board;
+        private const string Help = "Touch the squares to match where the screens are in the room.\r\nOne touch = outside view.  Two = instrument panel.  Three = empty.";
 
-        public LayoutDialog(int current, Rectangle area)
+        public LayoutDialog(ScreenLayout current, Rectangle area)
         {
-            Count = current;
-            Ui.Prepare(this, "Screen layout", area, 0.80, 0.62);
-            float px = area.Height / 24f;
+            Ui.Prepare(this, "Screen layout", area, 1.15, 0.78);
+            float px = area.Height / 26f;
+            LoadLayout(current);
+
             TableLayoutPanel t = new TableLayoutPanel();
             t.Dock = DockStyle.Fill; t.Padding = new Padding(8);
-            t.ColumnCount = 3; t.RowCount = 4;
+            t.ColumnCount = 3; t.RowCount = 3;
             for (int c = 0; c < 3; c++) t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
-            t.RowStyles.Add(new RowStyle(SizeType.Percent, 14));
-            t.RowStyles.Add(new RowStyle(SizeType.Percent, 20));
-            t.RowStyles.Add(new RowStyle(SizeType.Percent, 46));
-            t.RowStyles.Add(new RowStyle(SizeType.Percent, 20));
+            t.RowStyles.Add(new RowStyle(SizeType.Percent, 18));
+            t.RowStyles.Add(new RowStyle(SizeType.Percent, 66));
+            t.RowStyles.Add(new RowStyle(SizeType.Percent, 16));
 
-            Label q = Ui.Label("How many screens show the outside view?", px * 0.8f);
-            t.Controls.Add(q, 0, 0); t.SetColumnSpan(q, 3);
-            Button minus = Ui.Button("-", px * 1.6f, Ui.Plain), plus = Ui.Button("+", px * 1.6f, Ui.Plain);
-            number = Ui.Label("", px * 1.8f);
-            minus.Click += delegate { Change(-1); };
-            plus.Click += delegate { Change(1); };
-            t.Controls.Add(minus, 0, 1); t.Controls.Add(number, 1, 1); t.Controls.Add(plus, 2, 1);
+            message = Ui.Label(Help, px * 0.62f);
+            t.Controls.Add(message, 0, 0); t.SetColumnSpan(message, 3);
 
-            preview = new Panel();
-            preview.Dock = DockStyle.Fill;
-            preview.Paint += PaintPreview;
-            t.Controls.Add(preview, 0, 2); t.SetColumnSpan(preview, 3);
+            board = new Panel();
+            board.Dock = DockStyle.Fill;
+            board.Paint += PaintBoard;
+            board.MouseDown += BoardTouched;
+            t.Controls.Add(board, 0, 1); t.SetColumnSpan(board, 3);
 
-            Button save = Ui.Button("Save", px, Ui.Go), cancel = Ui.Button("Cancel", px, Ui.Plain);
-            save.Click += delegate { DialogResult = DialogResult.OK; };
+            Button save = Ui.Button("Save", px, Ui.Go), clear = Ui.Button("Clear", px, Ui.Plain), cancel = Ui.Button("Cancel", px, Ui.Plain);
+            save.Click += delegate { Save(); };
+            clear.Click += delegate { grid = new int[GW, GH]; message.Text = Help; board.Invalidate(); };
             cancel.Click += delegate { DialogResult = DialogResult.Cancel; };
-            t.Controls.Add(save, 0, 3); t.SetColumnSpan(save, 2);
-            t.Controls.Add(cancel, 2, 3);
+            t.Controls.Add(save, 0, 2); t.Controls.Add(clear, 1, 2); t.Controls.Add(cancel, 2, 2);
             Controls.Add(t);
-            Change(0);
         }
 
-        private void Change(int by)
+        // Places the current layout in the middle of the board.
+        private void LoadLayout(ScreenLayout l)
         {
-            Count = Math.Max(1, Math.Min(8, Count + by));
-            number.Text = Count.ToString();
-            preview.Invalidate();
+            int oc = Math.Max(0, (GW - l.Cols) / 2), or = Math.Max(0, (GH - l.Rows) / 2);
+            for (int i = 0; i <= l.ViewCount; i++)
+            {
+                int[] c = l.Cell(i);
+                int x = c[0] + oc, y = c[1] + or;
+                if (x < GW && y < GH) grid[x, y] = i < l.ViewCount ? 1 : 2;
+            }
         }
 
-        // Same picture the calibration wizard will show.
-        private void PaintPreview(object sender, PaintEventArgs e)
+        private ScreenLayout Build()
+        {
+            ScreenLayout l = new ScreenLayout();
+            l.Panel = null;
+            for (int y = 0; y < GH; y++)
+                for (int x = 0; x < GW; x++)
+                {
+                    if (grid[x, y] == 1) l.Views.Add(new int[] { x, y });
+                    else if (grid[x, y] == 2) l.Panel = new int[] { x, y };
+                }
+            return l;
+        }
+
+        private void Save()
+        {
+            ScreenLayout l = Build();
+            if (l.Views.Count < 1) { message.Text = "Add at least one outside view screen (touch a square once)."; return; }
+            if (l.Views.Count > 8) { message.Text = "Condor PreFlight handles up to 8 outside view screens."; return; }
+            if (l.Panel == null) { message.Text = "Add the instrument panel screen (touch a square twice)."; return; }
+            l.Normalize();
+            Result = l;
+            DialogResult = DialogResult.OK;
+        }
+
+        private Rectangle CellRect(int x, int y)
+        {
+            int gap = 6;
+            int cw = (board.ClientSize.Width - gap * (GW + 1)) / GW, ch = (board.ClientSize.Height - gap * (GH + 1)) / GH;
+            return new Rectangle(gap + x * (cw + gap), gap + y * (ch + gap), cw, ch);
+        }
+
+        private void BoardTouched(object sender, MouseEventArgs e)
+        {
+            for (int y = 0; y < GH; y++)
+                for (int x = 0; x < GW; x++)
+                    if (CellRect(x, y).Contains(e.Location))
+                    {
+                        int next = (grid[x, y] + 1) % 3;
+                        if (next == 2)   // only one instrument panel: it moves here
+                            for (int yy = 0; yy < GH; yy++)
+                                for (int xx = 0; xx < GW; xx++)
+                                    if (grid[xx, yy] == 2) grid[xx, yy] = 0;
+                        grid[x, y] = next;
+                        message.Text = Help;
+                        board.Invalidate();
+                        return;
+                    }
+        }
+
+        private void PaintBoard(object sender, PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            int W = preview.ClientSize.Width, H = preview.ClientSize.Height, gap = 6;
-            int bw = Math.Min((W - gap * (Count + 1)) / Count, W / 4), bh = (H - 3 * gap) / 2;
-            int left = (W - (Count * bw + (Count - 1) * gap)) / 2;
-            using (Pen p = new Pen(Color.FromArgb(150, 165, 180), 2))
-            using (Font f = new Font("Segoe UI", Math.Max(9f, bh * 0.22f), FontStyle.Regular, GraphicsUnit.Pixel))
-            using (Brush ink = new SolidBrush(Color.FromArgb(150, 165, 180)))
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+            Rectangle one = CellRect(0, 0);
+            using (Pen empty = new Pen(Color.FromArgb(70, 85, 100), 2))
+            using (Brush view = new SolidBrush(Ui.Go))
+            using (Brush panel = new SolidBrush(Color.FromArgb(190, 120, 20)))
+            using (Brush white = new SolidBrush(Color.White))
+            using (Font big = new Font("Segoe UI", Math.Max(10f, one.Height * 0.42f), FontStyle.Bold, GraphicsUnit.Pixel))
+            using (Font small = new Font("Segoe UI", Math.Max(9f, one.Height * 0.20f), FontStyle.Bold, GraphicsUnit.Pixel))
             using (StringFormat sf = new StringFormat())
             {
                 sf.Alignment = StringAlignment.Center; sf.LineAlignment = StringAlignment.Center;
-                for (int i = 0; i < Count; i++) g.DrawRectangle(p, left + i * (bw + gap), gap, bw, bh);
-                Rectangle panel = new Rectangle((W - bw) / 2, 2 * gap + bh, bw, bh);
-                g.DrawRectangle(p, panel);
-                g.DrawString("panel", f, ink, panel, sf);
+                int viewNo = 0;
+                for (int y = 0; y < GH; y++)
+                    for (int x = 0; x < GW; x++)
+                    {
+                        Rectangle r = CellRect(x, y);
+                        if (grid[x, y] == 1) { g.FillRectangle(view, r); g.DrawString((++viewNo).ToString(), big, white, r, sf); }
+                        else if (grid[x, y] == 2) { g.FillRectangle(panel, r); g.DrawString("panel", small, white, r, sf); }
+                        else g.DrawRectangle(empty, r);
+                    }
             }
         }
     }

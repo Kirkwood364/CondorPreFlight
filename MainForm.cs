@@ -218,14 +218,19 @@ namespace CondorPreFlight
 
         private void EditLayout()
         {
-            using (LayoutDialog d = new LayoutDialog(settings.SurroundCount, AnchorArea()))
+            string before = settings.Layout.ToString(), after;
+            using (LayoutDialog d = new LayoutDialog(settings.Layout, AnchorArea()))
             {
                 if (d.ShowDialog(this) != DialogResult.OK) return;
-                int chosen = d.Count;
-                if (chosen == settings.SurroundCount) return;
-                settings.Set("Layout", "SurroundCount", chosen.ToString());
+                after = d.Result.ToString();
             }
-            CheckScreens(false);   // reports that the new layout needs calibrating
+            if (after == before) return;
+            ScreenLayout chosen = ScreenLayout.Parse(after, 3);
+            settings.Ini.Set("Layout", "Cells", after);
+            settings.Ini.Set("Layout", "SurroundCount", chosen.ViewCount.ToString());
+            settings.Ini.Set("Calibration", "Count", "0");   // the old calibration no longer matches the picture
+            settings.Ini.Save();
+            CheckScreens(false);
         }
 
         // ---- screens -------------------------------------------------------
@@ -277,7 +282,7 @@ namespace CondorPreFlight
                 Say("Expected " + need + " screens but Windows can see " + displays.Count + ".\r\nCheck every projector is switched on, then try again.");
                 return;
             }
-            CalibrationWizard w = new CalibrationWizard(displays, settings.SurroundCount);
+            CalibrationWizard w = new CalibrationWizard(displays, settings.Layout);
             Hide();   // the wizard covers every screen; keep the button out of its way
             bool ok;
             try { ok = w.Run(); } finally { Show(); }
@@ -477,11 +482,12 @@ namespace CondorPreFlight
         {
             if (args.Length > 0 && string.Equals(args[0], "--demo", StringComparison.OrdinalIgnoreCase))
             {
-                int n = 3;
-                if (args.Length > 1) int.TryParse(args[1], out n);
+                // "--demo 5" previews a plain row of 5; "--demo" alone uses the saved layout.
+                int n;
+                ScreenLayout layout = (args.Length > 1 && int.TryParse(args[1], out n)) ? ScreenLayout.Default(n) : Settings.Load().Layout;
                 Displays.MakeDpiAware();
                 Application.EnableVisualStyles();
-                Demo.Run(n);
+                Demo.Run(layout);
                 return;
             }
             bool first;
