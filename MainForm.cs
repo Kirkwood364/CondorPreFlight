@@ -29,8 +29,11 @@ namespace CondorPreFlight
         }
 
         private Settings settings;
-        private List<Item> items = new List<Item>();
+        private List<Item> items;                      // the row currently shown
+        private List<Item> mainItems = new List<Item>();
+        private List<Item> adminItems = new List<Item>();
         private Item autoItem;
+        private DateTime restartArmed = DateTime.MinValue;
         private bool expanded;
         private bool screensOk;
         private string statusText = "";
@@ -48,14 +51,22 @@ namespace CondorPreFlight
             BackColor = Back;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
 
-            items.Add(new Item("START\nSIMULATOR", Go, delegate { StartSim(true); }));
-            items.Add(new Item("Instruments\nonly", Plain, delegate { StartSim(false); }));
-            items.Add(new Item("Calibrate\nscreens", Warn, delegate { Calibrate(); }));
-            items.Add(new Item("Undo screen\nchange", Plain, delegate { Undo(); }));
+            // Everyday row
+            mainItems.Add(new Item("START\nSIMULATOR", Go, delegate { StartSim(true); }));
+            mainItems.Add(new Item("Instruments\nonly", Plain, delegate { StartSim(false); }));
+            mainItems.Add(new Item("Restart\nsimulator", Plain, delegate { RestartSim(); }));
+            mainItems.Add(new Item("Calibrate\nscreens", Warn, delegate { Calibrate(); }));
+            mainItems.Add(new Item("Admin", Plain, delegate { OpenAdmin(); }));
+            // Admin row (behind the optional PIN)
+            adminItems.Add(new Item("< Back", Plain, delegate { ShowRow(mainItems); }));
+            adminItems.Add(new Item("Screen\nlayout", Plain, delegate { EditLayout(); }));
+            adminItems.Add(new Item("Undo screen\nchange", Plain, delegate { Undo(); }));
             autoItem = new Item("", Plain, delegate { ToggleAutoStart(); });
-            items.Add(autoItem);
-            items.Add(new Item("Settings\nfile", Plain, delegate { OpenSettings(); }));
-            items.Add(new Item("Exit", Plain, delegate { Close(); }));
+            adminItems.Add(autoItem);
+            adminItems.Add(new Item("Set PIN", Plain, delegate { SetPin(); }));
+            adminItems.Add(new Item("Settings\nfile", Plain, delegate { OpenSettings(); }));
+            adminItems.Add(new Item("Exit", Plain, delegate { Close(); }));
+            items = mainItems;
 
             MigrateAutoStart();
             UpdateAutoLabel();
@@ -162,7 +173,7 @@ namespace CondorPreFlight
             if (IconRect().Contains(e.Location))
             {
                 expanded = !expanded;
-                if (!expanded) statusText = "";
+                if (!expanded) { statusText = ""; items = mainItems; }   // admin locks again when tucked away
                 Place();
                 return;
             }
@@ -175,6 +186,47 @@ namespace CondorPreFlight
         private void Say(string text) { statusText = text; expanded = true; Place(); }
         // Keeps the message for when the menu is next opened, without popping it open.
         private void Note(string text) { statusText = text; Place(); }
+
+        // ---- menus ---------------------------------------------------------
+
+        private void ShowRow(List<Item> row) { items = row; statusText = ""; Place(); }
+
+        private void OpenAdmin()
+        {
+            string pin = settings.Get("Admin", "Pin", "");
+            if (pin.Length > 0)
+            {
+                using (PinDialog d = new PinDialog("Admin PIN", AnchorArea()))
+                {
+                    if (d.ShowDialog(this) != DialogResult.OK) return;
+                    if (d.Pin != pin) { Say("Wrong PIN."); return; }
+                }
+            }
+            ShowRow(adminItems);
+        }
+
+        private void SetPin()
+        {
+            using (PinDialog d = new PinDialog("New admin PIN (OK with nothing entered = no PIN)", AnchorArea()))
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                settings.Ini.Set("Admin", "Pin", d.Pin);
+                settings.Ini.Save();
+                Say(d.Pin.Length > 0 ? "Admin PIN set." : "Admin PIN removed.");
+            }
+        }
+
+        private void EditLayout()
+        {
+            using (LayoutDialog d = new LayoutDialog(settings.SurroundCount, AnchorArea()))
+            {
+                if (d.ShowDialog(this) != DialogResult.OK) return;
+                int chosen = d.Count;
+                if (chosen == settings.SurroundCount) return;
+                settings.Set("Layout", "SurroundCount", chosen.ToString());
+            }
+            CheckScreens(false);   // reports that the new layout needs calibrating
+        }
 
         // ---- screens -------------------------------------------------------
 
@@ -278,18 +330,40 @@ namespace CondorPreFlight
             if (exe.Length == 0 || !File.Exists(exe) || !Running(exe)) return "";
             try
             {
-                foreach (Process p in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(exe)))
-                {
-                    try
-                    {
-                        if (!p.CloseMainWindow() || !p.WaitForExit(3000)) { p.Kill(); p.WaitForExit(3000); }
-                    }
-                    catch { }
-                }
+                CloseProgram(exe);
                 Launch(exe);
                 return "Instruments restarted.\r\n";
             }
             catch (Exception ex) { return "Could not restart the instruments: " + ex.Message + "\r\n"; }
+        }
+
+        // Asks the program to close; if it has not gone after a few seconds, ends it.
+        private static void CloseProgram(string exe)
+        {
+            if (exe.Length == 0) return;
+            foreach (Process p in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(exe)))
+            {
+                try
+                {
+                    if (!p.CloseMainWindow() || !p.WaitForExit(4000)) { p.Kill(); p.WaitForExit(4000); }
+                }
+                catch { }
+            }
+        }
+
+        // Two touches needed, so a stray tap cannot end someone's flight.
+        private void RestartSim()
+        {
+            if ((DateTime.Now - restartArmed).TotalSeconds > 8)
+            {
+                restartArmed = DateTime.Now;
+                Say("This closes Condor and the instruments, then starts them again.\r\nTouch \"Restart simulator\" again to go ahead.");
+                return;
+            }
+            restartArmed = DateTime.MinValue;
+            CloseProgram(settings.CondorExe);
+            CloseProgram(settings.InstrumentsExe);
+            StartSim(true);
         }
 
         private void StartSim(bool withCondor)
