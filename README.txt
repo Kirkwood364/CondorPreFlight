@@ -5,7 +5,14 @@ Install
   2. Run CondorPreFlight.exe (or double-click build.bat to rebuild it from the .cs files)
   3. First run asks where Condor.exe, the instruments program and its .ini are
   4. Press "Calibrate screens" once
-  5. Press "Open at Windows start" so it reads ON
+  5. Open the menu and press "Start with Windows" so it reads ON
+
+Using it
+  It sits as a round button in the bottom-right corner of the instrument panel screen,
+  always on top. Touch it to slide the menu out; touch it again to tuck it away.
+  Green = screens OK. Amber = needs attention (open the menu to read why).
+  For the button to show over the instruments, set Mode=2 in the instruments .ini
+  (or Mode=2 under [Instruments] in CondorPreFlight.ini).
 
 Calibration
   Every screen shows its number and a picture of the screen layout.
