@@ -12,6 +12,9 @@ namespace CondorPreFlight
         public DisplayInfo[] Surround;
         public DisplayInfo Panel;
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool EnableWindow(IntPtr hWnd, bool enable);
+
         private List<DisplayInfo> displays;
         private int n;                       // surround screens
         private DisplayInfo[] boxOwner;      // index 0..n-1 surround left->right, n = panel
@@ -57,6 +60,13 @@ namespace CondorPreFlight
         {
             foreach (DisplayInfo d in displays) forms.Add(new WizardForm(this, d));
             for (int i = 1; i < forms.Count; i++) forms[i].Show();
+            // ShowDialog switches off every other window of the program, which left only
+            // one screen answering touches. Switch the other wizard screens back on.
+            forms[0].Shown += delegate
+            {
+                for (int i = 1; i < forms.Count; i++)
+                    if (forms[i].IsHandleCreated) EnableWindow(forms[i].Handle, true);
+            };
             forms[0].ShowDialog();
             foreach (WizardForm f in forms) { if (!f.IsDisposed) f.Dispose(); }
             return accepted;

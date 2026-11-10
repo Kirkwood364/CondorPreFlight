@@ -100,7 +100,8 @@ namespace CondorPreFlight
             try
             {
                 DisplayInfo[] surround; DisplayInfo panel; string reason;
-                if (!Calibration.TryResolve(settings, Displays.GetAll(), out surround, out panel, out reason))
+                List<DisplayInfo> all = Displays.GetAll();
+                if (!Calibration.TryResolve(settings, all, out surround, out panel, out reason))
                 {
                     Say(reason + "\r\nPress \"Calibrate screens\".");
                     return;
@@ -111,11 +112,21 @@ namespace CondorPreFlight
                     Say("Condor is running, so screen settings were not checked.");
                     return;
                 }
+                string primaryNote = EnsurePanelPrimary(panel, all);
                 ApplyResult r = Configurator.Apply(settings, surround, panel);
                 screensOk = true;
-                Say((r.Changed ? "Windows had renumbered the screens - fixed automatically.\r\n" : "Screens OK.\r\n") + r.Summary());
+                Say(primaryNote + (r.Changed ? "Windows had renumbered the screens - fixed automatically.\r\n" : "Screens OK.\r\n") + r.Summary());
             }
             catch (Exception ex) { Say("Could not check the screens: " + ex.Message); }
+        }
+
+        // Makes the instrument panel the Windows main display if it is not already.
+        // Returns a line for the status box ("" when nothing needed doing).
+        private string EnsurePanelPrimary(DisplayInfo panel, List<DisplayInfo> all)
+        {
+            if (settings.GetInt("Layout", "MakePanelPrimary", 1) != 1 || panel.Primary) return "";
+            string err = Displays.SetPrimary(panel, all);
+            return err == null ? "Instrument panel set as the Windows main display.\r\n" : "Could not set the main display: " + err + "\r\n";
         }
 
         private void MoveToPanel()
@@ -146,9 +157,10 @@ namespace CondorPreFlight
             try
             {
                 Calibration.Save(settings, w.Surround, w.Panel);
+                string primaryNote = EnsurePanelPrimary(w.Panel, displays);
                 ApplyResult r = Configurator.Apply(settings, w.Surround, w.Panel);
                 screensOk = true;
-                Say("Calibration saved.\r\n" + r.Summary());
+                Say("Calibration saved.\r\n" + primaryNote + r.Summary());
                 MoveToPanel();
             }
             catch (Exception ex) { Say("Calibration could not be saved: " + ex.Message); }

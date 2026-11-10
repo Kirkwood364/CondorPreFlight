@@ -17,6 +17,8 @@ What it changes
   Condor:       [Graphics] MonitorCount, MonitorNID (and MonitorNFiOffset) in every
                 pilot's Setup.ini
   Instruments:  [Window] Monitor
+  Windows:      the instrument panel is made the main display (MakePanelPrimary in the
+                settings file turns this off)
   Every change is backed up in the Backups folder. "Undo last screen change" puts it back.
 
 Settings live in CondorPreFlight.ini next to the program (created on first run).

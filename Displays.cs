@@ -25,6 +25,54 @@ namespace CondorPreFlight
         [DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
 
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct DEVMODE
+        {
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+            public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+            public int dmFields;
+            public int dmPositionX, dmPositionY;
+            public int dmDisplayOrientation, dmDisplayFixedOutput;
+            public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+            public short dmLogPixels;
+            public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+            public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern bool EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int ChangeDisplaySettingsEx(string deviceName, ref DEVMODE devMode, IntPtr hwnd, uint flags, IntPtr lParam);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "ChangeDisplaySettingsEx")]
+        private static extern int ApplyDisplaySettings(string deviceName, IntPtr devMode, IntPtr hwnd, uint flags, IntPtr lParam);
+
+        private const int ENUM_CURRENT_SETTINGS = -1;
+        private const int DM_POSITION = 0x20;
+        private const uint CDS_UPDATEREGISTRY = 0x1, CDS_SET_PRIMARY = 0x10, CDS_NORESET = 0x10000000;
+
+        // Makes one display the Windows main display. Windows requires the main display
+        // to sit at position 0,0, so every display is shifted by the same amount and the
+        // arrangement stays as it was. Returns null on success, or what went wrong.
+        public static string SetPrimary(DisplayInfo target, List<DisplayInfo> all)
+        {
+            foreach (DisplayInfo d in all)
+            {
+                DEVMODE dm = new DEVMODE();
+                dm.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+                if (!EnumDisplaySettings(d.DeviceName, ENUM_CURRENT_SETTINGS, ref dm)) return "Could not read the settings of screen " + d.Number + ".";
+                dm.dmFields = DM_POSITION;
+                dm.dmPositionX = d.X - target.X;
+                dm.dmPositionY = d.Y - target.Y;
+                uint flags = CDS_UPDATEREGISTRY | CDS_NORESET;
+                if (d == target) flags |= CDS_SET_PRIMARY;
+                int rc = ChangeDisplaySettingsEx(d.DeviceName, ref dm, IntPtr.Zero, flags, IntPtr.Zero);
+                if (rc != 0) return "Windows refused to move screen " + d.Number + " (code " + rc + ").";
+            }
+            int applied = ApplyDisplaySettings(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+            return applied == 0 ? null : "Windows refused the new main display (code " + applied + ").";
+        }
+
         // Must run before any window exists, so screen sizes are real pixels.
         public static void MakeDpiAware()
         {

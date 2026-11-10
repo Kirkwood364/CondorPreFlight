@@ -34,6 +34,8 @@ InstrumentsIni=
 [Layout]
 ; Number of projectors / screens in the outside view
 SurroundCount=3
+; 1 = keep the instrument panel screen as the Windows main display
+MakePanelPrimary=1
 
 [Condor]
 ; How Condor numbers displays:
