@@ -20,3 +20,8 @@ What it changes
   Every change is backed up in the Backups folder. "Undo last screen change" puts it back.
 
 Settings live in CondorPreFlight.ini next to the program (created on first run).
+
+Preview without the simulator
+  Double-click demo.bat to try the calibration wizard on one monitor.
+  The four sim screens are drawn as tiles in a T. Nothing is saved.
+  For a different number of outside-view screens: CondorPreFlight.exe --demo 5

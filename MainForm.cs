@@ -276,8 +276,17 @@ namespace CondorPreFlight
     public static class Program
     {
         [STAThread]
-        public static void Main()
+        public static void Main(string[] args)
         {
+            if (args.Length > 0 && string.Equals(args[0], "--demo", StringComparison.OrdinalIgnoreCase))
+            {
+                int n = 3;
+                if (args.Length > 1) int.TryParse(args[1], out n);
+                Displays.MakeDpiAware();
+                Application.EnableVisualStyles();
+                Demo.Run(n);
+                return;
+            }
             bool first;
             using (System.Threading.Mutex m = new System.Threading.Mutex(true, "CondorPreFlight.SingleInstance", out first))
             {
