@@ -8,7 +8,8 @@ namespace CondorPreFlight
     public class DisplayInfo
     {
         public string DeviceName = "";   // \\.\DISPLAY3
-        public int Number;               // 3  (normally the number Windows Display Settings shows)
+        public int Number;               // 1..N with no gaps, in device order (what Display Settings normally shows)
+        public int DeviceNumber;         // 3  (the raw number in the device name; can have gaps)
         public int ListPosition;         // 1-based position in Windows' own enumeration order
         public int X, Y, W, H;
         public string HardwareId = "";
@@ -114,8 +115,9 @@ MakePanelPrimary=1
 
 [Condor]
 ; How Condor numbers displays:
-;   WindowsNumber = the number in Windows Display Settings
+;   WindowsNumber = 1, 2, 3... in Windows' device order (normally matches Display Settings)
 ;   ListOrder     = the order Windows lists displays to programs
+;   DeviceNumber  = the raw Windows device number, which can skip (1, 4, 5, 6)
 Numbering=WindowsNumber
 ; Added to the number above. -1 because Condor stores MONITOR 1 as 0.
 NumberOffset=-1
@@ -191,7 +193,9 @@ Pin=
         {
             string scheme = s.Get(app, "Numbering", "WindowsNumber");
             int offset = s.GetInt(app, "NumberOffset", -1);
-            int basis = string.Equals(scheme, "ListOrder", StringComparison.OrdinalIgnoreCase) ? d.ListPosition : d.Number;
+            int basis = d.Number;
+            if (string.Equals(scheme, "ListOrder", StringComparison.OrdinalIgnoreCase)) basis = d.ListPosition;
+            else if (string.Equals(scheme, "DeviceNumber", StringComparison.OrdinalIgnoreCase)) basis = d.DeviceNumber;
             return basis + offset;
         }
 

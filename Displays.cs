@@ -92,7 +92,7 @@ namespace CondorPreFlight
                 if (nul >= 0) name = name.Substring(0, nul);
                 d.DeviceName = name;
                 d.ListPosition = pos++;
-                d.Number = TrailingNumber(name, d.ListPosition);
+                d.DeviceNumber = TrailingNumber(name, d.ListPosition);
                 d.X = sc.Bounds.X; d.Y = sc.Bounds.Y; d.W = sc.Bounds.Width; d.H = sc.Bounds.Height;
                 d.Primary = sc.Primary;
                 try
@@ -105,7 +105,10 @@ namespace CondorPreFlight
                 catch { }
                 list.Add(d);
             }
-            list.Sort(delegate(DisplayInfo a, DisplayInfo b) { return a.Number.CompareTo(b.Number); });
+            // Device numbers can skip (1, 4, 5, 6) when the graphics card has unused outputs.
+            // Display Settings, Condor and the instruments count 1, 2, 3, 4, so do the same.
+            list.Sort(delegate(DisplayInfo a, DisplayInfo b) { return a.DeviceNumber.CompareTo(b.DeviceNumber); });
+            for (int i = 0; i < list.Count; i++) list[i].Number = i + 1;
             return list;
         }
 
