@@ -36,6 +36,7 @@ namespace CondorPreFlight
         private DateTime restartArmed = DateTime.MinValue;
         private bool expanded;
         private bool screensOk;
+        private string scaleNote = "";   // non-empty when the screens are at different scales
         private string statusText = "";
         private int S = 64, buttonW = 120, statusH;
         private Timer topTimer = new Timer();
@@ -146,7 +147,8 @@ namespace CondorPreFlight
             {
                 buttonW = Math.Min((int)(S * 2.2), (a.Width - 2 * margin - S) / items.Count);
                 int w = S + items.Count * buttonW;
-                statusH = statusText.Length == 0 ? 0 : (int)(S * 0.95);
+                int lines = statusText.Split('\n').Length + statusText.Length / 110;
+                statusH = statusText.Length == 0 ? 0 : (int)(S * Math.Max(0.95, 0.30 * lines + 0.15));
                 Bounds = new Rectangle(a.Right - margin - w, a.Bottom - margin - S - statusH, w, S + statusH);
             }
             Invalidate();
@@ -181,7 +183,7 @@ namespace CondorPreFlight
                 // The button itself: green when the screens check out, amber when they need attention.
                 Rectangle ic = IconRect();
                 ic.Inflate(-S / 10, -S / 10);
-                using (Brush b = new SolidBrush(screensOk ? Go : Warn)) g.FillEllipse(b, ic);
+                using (Brush b = new SolidBrush(screensOk && scaleNote.Length == 0 ? Go : Warn)) g.FillEllipse(b, ic);
                 int bar = Math.Max(3, S / 14), bw = ic.Width / 2, bx = ic.X + (ic.Width - bw) / 2, cy = ic.Y + ic.Height / 2;
                 for (int k = -1; k <= 1; k++) g.FillRectangle(white, bx, cy + k * bar * 2 - bar / 2, bw, bar);
             }
@@ -265,7 +267,7 @@ namespace CondorPreFlight
                 sb.AppendLine("SCREENS AS WINDOWS REPORTS THEM");
                 foreach (DisplayInfo d in all)
                     sb.AppendLine("  wizard number " + d.Number + " | device " + d.DeviceName + " | list position " + d.ListPosition + " | card position " + d.AdapterRank
-                        + " | " + (d.Primary ? "MAIN DISPLAY" : "not main") + " | at " + d.X + "," + d.Y + " size " + d.W + "x" + d.H + " | id " + d.HardwareId + " | card " + d.Adapter);
+                        + " | " + (d.Primary ? "MAIN DISPLAY" : "not main") + " | scale " + d.Scale + "% | at " + d.X + "," + d.Y + " size " + d.W + "x" + d.H + " | id " + d.HardwareId + " | card " + d.Adapter);
                 sb.AppendLine();
                 sb.AppendLine("LAYOUT  " + settings.Layout + "   (calibrated " + settings.Get("Calibration", "Saved", "never") + ")");
                 DisplayInfo[] surround; DisplayInfo panel; string reason;
@@ -320,6 +322,7 @@ namespace CondorPreFlight
         private void CheckScreens(bool quiet)
         {
             screensOk = false;
+            scaleNote = "";
             try
             {
                 DisplayInfo[] surround; DisplayInfo panel; string reason;
@@ -329,20 +332,39 @@ namespace CondorPreFlight
                     Say(reason + "\r\nPress \"Calibrate screens\".");
                     return;
                 }
+                scaleNote = ScaleWarning(surround, panel);
                 if (CondorRunning())
                 {
                     screensOk = true;
-                    Note("Condor is running, so screen settings were not checked.");
+                    if (scaleNote.Length > 0) Say(scaleNote); else Note("Condor is running, so screen settings were not checked.");
                     return;
                 }
                 string primaryNote = EnsurePanelPrimary(panel, all);
                 ApplyResult r = Configurator.Apply(settings, surround, panel);
                 screensOk = true;
                 string restartNote = r.Changed ? RestartInstrumentsIfRunning() : "";
-                string msg = primaryNote + (r.Changed ? "Windows had renumbered the screens - fixed automatically.\r\n" : "Screens OK.\r\n") + restartNote + r.Summary();
-                if (quiet && !r.Changed && primaryNote.Length == 0) Note(msg); else Say(msg);
+                string msg = scaleNote + primaryNote + (r.Changed ? "Windows had renumbered the screens - fixed automatically.\r\n" : "Screens OK.\r\n") + restartNote + r.Summary();
+                if (quiet && !r.Changed && primaryNote.Length == 0 && scaleNote.Length == 0) Note(msg); else Say(msg);
             }
             catch (Exception ex) { Say("Could not check the screens: " + ex.Message); }
+        }
+
+        // Condor takes its scaling from the main display. If a projector is at a different
+        // Windows scale, Condor's picture is shrunk into its top-left corner.
+        private string ScaleWarning(DisplayInfo[] surround, DisplayInfo panel)
+        {
+            if (settings.GetInt("Layout", "CheckScale", 1) != 1 || panel.Scale == 0) return "";
+            bool same = true;
+            List<string> views = new List<string>();
+            foreach (DisplayInfo d in surround)
+            {
+                if (d.Scale == 0) return "";
+                if (d.Scale != panel.Scale) same = false;
+                views.Add(d.Scale + "%");
+            }
+            if (same) return "";
+            return "WARNING: the screens are not all at the same Windows scale (instrument panel " + panel.Scale + "%; outside views "
+                + string.Join(", ", views.ToArray()) + ").\r\nCondor may only fill part of a projector. In Windows Display Settings, set Scale the same on every screen.\r\n";
         }
 
         // Makes the instrument panel the Windows main display if it is not already.
@@ -375,7 +397,8 @@ namespace CondorPreFlight
                 string primaryNote = EnsurePanelPrimary(w.Panel, displays);
                 ApplyResult r = Configurator.Apply(settings, w.Surround, w.Panel);
                 screensOk = true;
-                Say("Calibration saved.\r\n" + primaryNote + RestartInstrumentsIfRunning() + r.Summary());
+                scaleNote = ScaleWarning(w.Surround, w.Panel);
+                Say(scaleNote + "Calibration saved.\r\n" + primaryNote + RestartInstrumentsIfRunning() + r.Summary());
             }
             catch (Exception ex) { Say("Calibration could not be saved: " + ex.Message); }
         }
@@ -469,7 +492,7 @@ namespace CondorPreFlight
                     else { Say("Condor.exe is not set. Press \"Settings file\"."); return; }
                 }
                 // Tuck the menu away so it is not sitting over the instruments.
-                statusText = done.Count > 0 ? "Started " + string.Join(" and ", done.ToArray()) + "." : "Already running.";
+                statusText = scaleNote + (done.Count > 0 ? "Started " + string.Join(" and ", done.ToArray()) + "." : "Already running.");
                 expanded = false;
                 Place();
             }

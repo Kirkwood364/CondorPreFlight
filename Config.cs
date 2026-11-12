@@ -11,6 +11,7 @@ namespace CondorPreFlight
         public int Number;               // 1..N with no gaps, in device order (what Display Settings normally shows)
         public string Adapter = "";      // graphics card this display is plugged into
         public int AdapterRank;          // 1..N among the displays on the same graphics card
+        public int Scale;                // Windows "Scale" setting in percent (0 = unknown)
         public int DeviceNumber;         // 3  (the raw number in the device name; can have gaps)
         public int ListPosition;         // 1-based position in Windows' own enumeration order
         public int X, Y, W, H;
@@ -112,6 +113,9 @@ SurroundCount=3
 ; V:column,row = outside view, P:column,row = instrument panel. Blank = one row of
 ; SurroundCount views with the panel underneath.
 Cells=
+; 1 = warn when the screens are not all at the same Windows scale (Condor then
+; only fills part of a projector in fullscreen emulation)
+CheckScale=1
 ; 1 = keep the instrument panel screen as the Windows main display
 MakePanelPrimary=1
 

@@ -73,6 +73,26 @@ namespace CondorPreFlight
             return applied == 0 ? null : "Windows refused the new main display (code " + applied + ").";
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT { public int X, Y; }
+        [DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
+        [DllImport("shcore.dll")]
+        private static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint dpiX, out uint dpiY);
+
+        // The Windows "Scale" setting of the display, in percent. 0 if it cannot be read.
+        private static int ScaleOf(DisplayInfo d)
+        {
+            try
+            {
+                POINT p; p.X = d.X + d.W / 2; p.Y = d.Y + d.H / 2;
+                uint dx, dy;
+                if (GetDpiForMonitor(MonitorFromPoint(p, 2), 0, out dx, out dy) == 0) return (int)Math.Round(dx * 100.0 / 96.0);
+            }
+            catch { }
+            return 0;
+        }
+
         // Must run before any window exists, so screen sizes are real pixels.
         public static void MakeDpiAware()
         {
@@ -95,6 +115,7 @@ namespace CondorPreFlight
                 d.DeviceNumber = TrailingNumber(name, d.ListPosition);
                 d.X = sc.Bounds.X; d.Y = sc.Bounds.Y; d.W = sc.Bounds.Width; d.H = sc.Bounds.Height;
                 d.Primary = sc.Primary;
+                d.Scale = ScaleOf(d);
                 try
                 {
                     DISPLAY_DEVICE dd = new DISPLAY_DEVICE();
