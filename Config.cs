@@ -138,6 +138,8 @@ Mode=
 [Startup]
 ; 1 = start Condor and the instruments automatically when the panel opens and screens check out
 AutoStartSim=0
+; 1 = keep Condor's menu above the instruments window, 0 = only give it the keyboard
+CondorOnTop=1
 
 [Admin]
 ; PIN for the Admin menu. Blank = no PIN. Only there to stop accidents; it is stored in plain text.

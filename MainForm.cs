@@ -39,6 +39,22 @@ namespace CondorPreFlight
         private string statusText = "";
         private int S = 64, buttonW = 120, statusH;
         private Timer topTimer = new Timer();
+        private Timer frontTimer = new Timer();
+        private Dictionary<IntPtr, bool> fronted = new Dictionary<IntPtr, bool>();
+        private DateTime frontStarted, frontLastNew;
+
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT { public int Left, Top, Right, Bottom; }
+        [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+        [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int cmd);
+        [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
+        [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
 
         public MainForm()
         {
@@ -77,6 +93,8 @@ namespace CondorPreFlight
             topTimer.Interval = 2000;
             topTimer.Tick += delegate { Raise(); };
             topTimer.Start();
+            frontTimer.Interval = 500;
+            frontTimer.Tick += delegate { FrontTick(); };
             SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
             FormClosed += delegate { SystemEvents.DisplaySettingsChanged -= OnDisplayChanged; };
             Shown += delegate { FirstRunPaths(); CheckScreens(true); Place(); MaybeAutoStart(); };
@@ -447,7 +465,7 @@ namespace CondorPreFlight
                 else { Say("The instruments program is not set. Press \"Settings file\"."); return; }
                 if (withCondor)
                 {
-                    if (condor.Length > 0 && File.Exists(condor)) { if (!Running(condor)) { Launch(condor); done.Add("Condor"); } }
+                    if (condor.Length > 0 && File.Exists(condor)) { if (!Running(condor)) { Launch(condor); done.Add("Condor"); } BringCondorForward(); }
                     else { Say("Condor.exe is not set. Press \"Settings file\"."); return; }
                 }
                 // Tuck the menu away so it is not sitting over the instruments.
@@ -456,6 +474,50 @@ namespace CondorPreFlight
                 Place();
             }
             catch (Exception ex) { Say("Could not start: " + ex.Message); }
+        }
+
+        // Condor's menu opens on the main display, underneath the always-on-top instruments.
+        // Watch for Condor's windows as they appear and lift each one to the front.
+        private void BringCondorForward()
+        {
+            fronted.Clear();
+            frontStarted = frontLastNew = DateTime.Now;
+            frontTimer.Start();
+        }
+
+        private void FrontTick()
+        {
+            DateTime now = DateTime.Now;
+            // Stop once the menu has been up for a while, so flight windows are left alone.
+            if ((now - frontStarted).TotalSeconds > 180 || (fronted.Count > 0 && (now - frontLastNew).TotalSeconds > 20)) { frontTimer.Stop(); return; }
+            try
+            {
+                string exe = settings.CondorExe;
+                Dictionary<uint, bool> pids = new Dictionary<uint, bool>();
+                foreach (Process p in Process.GetProcessesByName(exe.Length > 0 ? Path.GetFileNameWithoutExtension(exe) : "Condor")) pids[(uint)p.Id] = true;
+                if (pids.Count == 0) return;
+                bool onTop = settings.GetInt("Startup", "CondorOnTop", 1) == 1;
+                EnumWindows(delegate(IntPtr h, IntPtr l)
+                {
+                    uint pid; RECT r;
+                    GetWindowThreadProcessId(h, out pid);
+                    if (!pids.ContainsKey(pid) || fronted.ContainsKey(h) || !IsWindowVisible(h) || !GetWindowRect(h, out r)) return true;
+                    if (r.Right - r.Left < 300 || r.Bottom - r.Top < 200) return true;   // skip hidden helper windows
+                    fronted[h] = true;
+                    frontLastNew = now;
+                    if (IsIconic(h)) ShowWindow(h, 9);
+                    if (onTop) SetWindowPos(h, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002);
+                    if (!SetForegroundWindow(h) || GetForegroundWindow() != h)
+                    {
+                        // Windows sometimes refuses a focus change; a tap of Alt unlocks it.
+                        keybd_event(0x12, 0, 0, UIntPtr.Zero); keybd_event(0x12, 0, 2, UIntPtr.Zero);
+                        SetForegroundWindow(h);
+                    }
+                    return true;
+                }, IntPtr.Zero);
+                Raise();   // keep our own button above Condor's menu
+            }
+            catch { }
         }
 
         private void MaybeAutoStart()
