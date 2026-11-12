@@ -63,6 +63,7 @@ namespace CondorPreFlight
             adminItems.Add(new Item("Undo screen\nchange", Plain, delegate { Undo(); }));
             autoItem = new Item("", Plain, delegate { ToggleAutoStart(); });
             adminItems.Add(autoItem);
+            adminItems.Add(new Item("Screen\nreport", Plain, delegate { Report(); }));
             adminItems.Add(new Item("Set PIN", Plain, delegate { SetPin(); }));
             adminItems.Add(new Item("Settings\nfile", Plain, delegate { OpenSettings(); }));
             adminItems.Add(new Item("Exit", Plain, delegate { Close(); }));
@@ -231,6 +232,69 @@ namespace CondorPreFlight
             settings.Ini.Set("Calibration", "Count", "0");   // the old calibration no longer matches the picture
             settings.Ini.Save();
             CheckScreens(false);
+        }
+
+        // Writes everything known about the screens and settings files to a text file,
+        // for working out numbering problems. Changes nothing.
+        private void Report()
+        {
+            try
+            {
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                sb.AppendLine("Condor PreFlight screen report  " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
+                sb.AppendLine();
+                List<DisplayInfo> all = Displays.GetAll();
+                sb.AppendLine("SCREENS AS WINDOWS REPORTS THEM");
+                foreach (DisplayInfo d in all)
+                    sb.AppendLine("  wizard number " + d.Number + " | device " + d.DeviceName + " | list position " + d.ListPosition
+                        + " | " + (d.Primary ? "MAIN DISPLAY" : "not main") + " | at " + d.X + "," + d.Y + " size " + d.W + "x" + d.H + " | id " + d.HardwareId);
+                sb.AppendLine();
+                sb.AppendLine("LAYOUT  " + settings.Layout + "   (calibrated " + settings.Get("Calibration", "Saved", "never") + ")");
+                DisplayInfo[] surround; DisplayInfo panel; string reason;
+                if (Calibration.TryResolve(settings, all, out surround, out panel, out reason))
+                {
+                    for (int i = 0; i < surround.Length; i++)
+                        sb.AppendLine("  outside view " + (i + 1) + " = wizard number " + surround[i].Number + " -> Condor Monitor" + i + "ID should be " + Configurator.NumberFor(surround[i], settings, "Condor"));
+                    sb.AppendLine("  instrument panel = wizard number " + panel.Number + " -> instruments Monitor should be " + Configurator.NumberFor(panel, settings, "Instruments"));
+                }
+                else sb.AppendLine("  Not resolved: " + reason);
+                sb.AppendLine();
+                sb.AppendLine("NUMBERING  Condor: " + settings.Get("Condor", "Numbering", "WindowsNumber") + " offset " + settings.GetInt("Condor", "NumberOffset", -1)
+                    + "   Instruments: " + settings.Get("Instruments", "Numbering", "WindowsNumber") + " offset " + settings.GetInt("Instruments", "NumberOffset", -1));
+                sb.AppendLine();
+                sb.AppendLine("CONDOR  exe: " + settings.CondorExe + "   running: " + CondorRunning());
+                sb.AppendLine("  pilots folder: " + settings.CondorPilotsDir);
+                foreach (string f in Configurator.CondorSetupFiles(settings))
+                {
+                    IniFile ini = IniFile.Load(f);
+                    int count; int.TryParse(ini.Get("Graphics", "MonitorCount", "0"), out count);
+                    string line = "  " + f + "  MonitorCount=" + count;
+                    for (int i = 0; i < count && i < 9; i++)
+                        line += "  [" + i + "] ID=" + ini.Get("Graphics", "Monitor" + i + "ID", "?") + " offset=" + ini.Get("Graphics", "Monitor" + i + "FiOffset", "?");
+                    sb.AppendLine(line);
+                }
+                sb.AppendLine();
+                string fci = settings.InstrumentsIni, fciExe = settings.InstrumentsExe;
+                sb.AppendLine("INSTRUMENTS  exe: " + fciExe + "   running: " + (fciExe.Length > 0 && Running(fciExe)));
+                sb.AppendLine("  settings file: " + fci);
+                if (fci.Length > 0 && File.Exists(fci))
+                {
+                    IniFile ini = IniFile.Load(fci);
+                    sb.AppendLine("  Monitor=" + ini.Get("Window", "Monitor", "?") + "  Mode=" + ini.Get("Window", "Mode", "?") + "  Left=" + ini.Get("Window", "Left", "?") + "  Top=" + ini.Get("Window", "Top", "?"));
+                }
+                else sb.AppendLine("  (file not found)");
+                if (fciExe.Length > 0 && File.Exists(fciExe))
+                {
+                    sb.AppendLine("  other .ini files beside the instruments program:");
+                    foreach (string f in Directory.GetFiles(Path.GetDirectoryName(fciExe), "*.ini"))
+                        sb.AppendLine("    " + Path.GetFileName(f) + "  Monitor=" + IniFile.Load(f).Get("Window", "Monitor", "-"));
+                }
+                string path = Path.Combine(Settings.BaseDir, "CondorPreFlight-report.txt");
+                File.WriteAllText(path, sb.ToString());
+                Process.Start("notepad.exe", "\"" + path + "\"");
+                Say("Report saved as CondorPreFlight-report.txt next to the program.");
+            }
+            catch (Exception ex) { Say("Could not write the report: " + ex.Message); }
         }
 
         // ---- screens -------------------------------------------------------
