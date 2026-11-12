@@ -9,6 +9,8 @@ namespace CondorPreFlight
     {
         public string DeviceName = "";   // \\.\DISPLAY3
         public int Number;               // 1..N with no gaps, in device order (what Display Settings normally shows)
+        public string Adapter = "";      // graphics card this display is plugged into
+        public int AdapterRank;          // 1..N among the displays on the same graphics card
         public int DeviceNumber;         // 3  (the raw number in the device name; can have gaps)
         public int ListPosition;         // 1-based position in Windows' own enumeration order
         public int X, Y, W, H;
@@ -115,10 +117,12 @@ MakePanelPrimary=1
 
 [Condor]
 ; How Condor numbers displays:
+;   AdapterOrder  = 1, 2, 3... counting only the screens on the same graphics card
+;                   (Condor only lists the screens on the card it draws with)
 ;   WindowsNumber = 1, 2, 3... in Windows' device order (normally matches Display Settings)
 ;   ListOrder     = the order Windows lists displays to programs
 ;   DeviceNumber  = the raw Windows device number, which can skip (1, 4, 5, 6)
-Numbering=WindowsNumber
+Numbering=AdapterOrder
 ; Added to the number above. -1 because Condor stores MONITOR 1 as 0.
 NumberOffset=-1
 ; View direction per screen, left to right, comma separated (e.g. -1,0,1).
@@ -126,8 +130,8 @@ NumberOffset=-1
 ViewOffsets=keep
 
 [Instruments]
-Numbering=WindowsNumber
-NumberOffset=-1
+Numbering=ListOrder
+NumberOffset=0
 ; Window mode to force (0 windowed, 1 fullscreen, 2 fullscreen emulation). Blank = leave alone.
 Mode=
 
@@ -195,6 +199,7 @@ Pin=
             int offset = s.GetInt(app, "NumberOffset", -1);
             int basis = d.Number;
             if (string.Equals(scheme, "ListOrder", StringComparison.OrdinalIgnoreCase)) basis = d.ListPosition;
+            else if (string.Equals(scheme, "AdapterOrder", StringComparison.OrdinalIgnoreCase)) basis = d.AdapterRank;
             else if (string.Equals(scheme, "DeviceNumber", StringComparison.OrdinalIgnoreCase)) basis = d.DeviceNumber;
             return basis + offset;
         }

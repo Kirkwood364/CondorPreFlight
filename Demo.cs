@@ -30,7 +30,7 @@ namespace CondorPreFlight
                 DisplayInfo d = new DisplayInfo();
                 d.Number = ((i * 2 + 2) % total) + 1;
                 if (total % 2 == 0 && i >= total / 2) d.Number = ((i * 2 + 1) % total) + 1;
-                d.DeviceNumber = d.Number;
+                d.DeviceNumber = d.Number; d.AdapterRank = d.Number;
                 d.ListPosition = i + 1;
                 d.HardwareId = "demo" + i;
                 d.DeviceName = "DEMO" + d.Number;

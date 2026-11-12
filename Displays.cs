@@ -109,6 +109,29 @@ namespace CondorPreFlight
             // Display Settings, Condor and the instruments count 1, 2, 3, 4, so do the same.
             list.Sort(delegate(DisplayInfo a, DisplayInfo b) { return a.DeviceNumber.CompareTo(b.DeviceNumber); });
             for (int i = 0; i < list.Count; i++) list[i].Number = i + 1;
+
+            // Which graphics card each display is on, and its place among that card's displays.
+            Dictionary<string, string> adapters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                for (uint i = 0; i < 64; i++)
+                {
+                    DISPLAY_DEVICE ad = new DISPLAY_DEVICE();
+                    ad.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+                    if (!EnumDisplayDevices(null, i, ref ad, 0)) break;
+                    if (ad.DeviceName != null) adapters[ad.DeviceName] = ad.DeviceString + " | " + ad.DeviceID;
+                }
+            }
+            catch { }
+            Dictionary<string, int> seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (DisplayInfo d in list)
+            {
+                string a;
+                if (adapters.TryGetValue(d.DeviceName, out a)) d.Adapter = a;
+                int n;
+                seen.TryGetValue(d.Adapter, out n);
+                seen[d.Adapter] = d.AdapterRank = n + 1;
+            }
             return list;
         }
 

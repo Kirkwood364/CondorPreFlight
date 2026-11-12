@@ -246,8 +246,8 @@ namespace CondorPreFlight
                 List<DisplayInfo> all = Displays.GetAll();
                 sb.AppendLine("SCREENS AS WINDOWS REPORTS THEM");
                 foreach (DisplayInfo d in all)
-                    sb.AppendLine("  wizard number " + d.Number + " | device " + d.DeviceName + " | list position " + d.ListPosition
-                        + " | " + (d.Primary ? "MAIN DISPLAY" : "not main") + " | at " + d.X + "," + d.Y + " size " + d.W + "x" + d.H + " | id " + d.HardwareId);
+                    sb.AppendLine("  wizard number " + d.Number + " | device " + d.DeviceName + " | list position " + d.ListPosition + " | card position " + d.AdapterRank
+                        + " | " + (d.Primary ? "MAIN DISPLAY" : "not main") + " | at " + d.X + "," + d.Y + " size " + d.W + "x" + d.H + " | id " + d.HardwareId + " | card " + d.Adapter);
                 sb.AppendLine();
                 sb.AppendLine("LAYOUT  " + settings.Layout + "   (calibrated " + settings.Get("Calibration", "Saved", "never") + ")");
                 DisplayInfo[] surround; DisplayInfo panel; string reason;
